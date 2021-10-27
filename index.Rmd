@@ -19,72 +19,178 @@ tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
 
 ## Data Wrangling, Exploration, Visualization
 
-### Name and EID here
+### Vaishnavi Sathiyamoorthy vs25229
 
-#### Introduction 
+The United States has the highest maternal mortality rate out of all developed countries. The maternal mortality rate is defined as the number of maternal deaths within 42 days of the end of the pregnancy for every 100,000 live births. The rate has steadily increased since the late 1990s. Other developed countries have maternal mortality rates in the single digits. However, as of 2019, the United States' rate is 20.2. This is more than two times higher than other developed countries. I wrote a research paper about this topic and there was a lot of data on how various factors separately affect the maternal mortality rate. I want to see how all these factors can come together and influence the maternal mortality rate. It is important to determine the social determinants that contribute to the maternal mortility rate. Tobacco use, median household income, education, political ideologies, and state government party data for each state was used to see if these factors have any correlation with the maternal mortality rate. 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc.
+Six datasets are joined together to analyze these factors that may influence the maternal mortality rate in the United States. The education dataset, median household income, and political ideology datasets were gathered from The World Population Review. The tobacco dataset was from The United States Census Burea and the state legislature data was from Ballotpedia.
 
 ```{R}
-# read your datasets in here, e.g., with read_csv()
-
+library(tidyverse)
+library(knitr)
+tobacco <- read_csv("Tobacco_State.csv")
+tobacco <- tobacco %>% rename("State" = "Location") %>% slice(-54)
+household_income <- read_csv("Median_Household_Income_States.csv")
+education <- read_csv("Education_States.csv")
+maternal_mortality_rate <- read_csv("Maternal_Mortality_Rate_States.csv")
+political_ideology <- read_csv("Political_Ideology.csv")
+state_political_majority <- read_csv("State_Political_Majority.csv")
 ```
 
 #### Tidying: Reshaping
 
-If your datasets are tidy already, demonstrate that you can reshape data with pivot wider/longer here (e.g., untidy and then retidy). Alternatively, it may be easier to wait until the wrangling section so you can reshape your summary statistics. Note here if you are going to do this.
-
 ```{R}
-# your tidying code (if applicable; can also wait until wrangling section)
-```
+political_ideology <- political_ideology %>% select(-liberalAdvantage) %>%
+  pivot_longer(2:4, names_to ="political_ideology", values_to = "percentage") 
+kable(head(political_ideology))
+political_ideology <- political_ideology %>% pivot_wider(names_from = State, values_from = percentage) 
+kable(head(political_ideology))
+political_ideology <- political_ideology %>% pivot_longer(2:51, names_to = "State", values_to = "political percentage") %>%
+  pivot_wider(names_from = political_ideology, values_from = "political percentage")
+kable(head(political_ideology))
 
+education <- education %>% pivot_longer(2:4, names_to = "type", values_to = "numbers") %>%
+  pivot_wider(names_from = State, values_from = numbers)
+kable(head(education))
+education <- education %>% pivot_longer(2:51, names_to = "State", values_to = "numbers") 
+kable(head(education))
+education <- education %>% pivot_wider(names_from = type, values_from = numbers)
+kable(head(education))
+
+tobacco <- tobacco %>% pivot_longer(2:5, names_to = "type", values_to = "numbers")
+kable(head(tobacco))
+tobacco <- tobacco %>% pivot_wider(names_from = State, values_from = numbers)
+kable(head(tobacco))
+tobacco <- tobacco %>% pivot_longer(2:54, names_to = "State", values_to = "numbers") %>%
+  pivot_wider(names_from = type, values_from = numbers)
+kable(head(tobacco))
+```
     
 #### Joining/Merging
 
 ```{R}
-# your joining code
-
-# your joining code
+all_data <- inner_join(maternal_mortality_rate, education, by = "State")
+all_data <- inner_join(all_data, household_income, by = "State")
+all_data <- inner_join(all_data, tobacco, by = "State")
+all_data <- inner_join(all_data, political_ideology, by = "State")
+all_data <- inner_join(all_data, state_political_majority, by = "State")
 ```
 
-Discussions of joining here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+
+Inner joins were used to join the six datasets by state. The tobacco dataset contained data on District of Columbia, Guam, and Puerto Rico. These data points were not in the other datasets and thus were dropped from the joined dataset. 
+
 
 ####  Wrangling
 
 ```{R}
-# your wrangling code
-
-# your wrangling code
-
-# your wrangling code
+all_data <- all_data %>% select(-educationAttainmentRank, -educationQualityRank, -Low_Confidence_Limit, -High_Confidence_Limit, -Sample_Size)
+all_data <- all_data %>% rename("tobacco_use" = "Data_Value") %>% rename("state_governments" = "State Governments")
 ```
 
-Your discussion of wrangling section here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+
+The original joined dataset contained additional variables such as education ranking and quality ranking. Since these columns were not needed for this analysis, these columns were removed. In addition, some of the column names were renamed so it can be easier identify in the dataset.
+
+
+```{R}
+all_data <- all_data %>% mutate(education_MMR_ratio = (educationScore/maternalMortalityRate))
+all_data %>% arrange(desc(education_MMR_ratio)) %>% head() %>% kable()
+all_data %>% summarize(sd(education_MMR_ratio, na.rm = T)) %>% kable()
+all_data <- all_data %>% mutate(income_MMR_ratio = (HouseholdIncome/maternalMortalityRate))
+all_data %>% arrange(desc(income_MMR_ratio)) %>% head() %>% kable()
+all_data %>% summarize(sd(income_MMR_ratio, na.rm = T)) %>% kable()
+
+all_data %>% arrange(maternalMortalityRate) %>% head() %>% kable()
+all_data %>% arrange(desc(educationScore)) %>% head() %>% kable()
+all_data %>% arrange(desc(HouseholdIncome)) %>% head() %>% kable()
+all_data %>% arrange(tobacco_use) %>% head() %>% kable()
+
+all_data <- all_data %>% mutate(state_governments = str_replace(state_governments, "D", "Democrat")) %>%
+  mutate(state_governments = str_replace(state_governments, "R", "Republican")) %>% 
+  mutate(state_governments = str_replace(state_governments, "divided", "Divided"))
+all_data %>% group_by(state_governments) %>% summarise(mean(maternalMortalityRate, na.rm = T)) %>% kable()
+```
+
+
+Ratios of the maternal mortality rate and education and median household income were calculated. If the ratio between education and the maternal mortality rate is higher, that indicates that better education lowers the maternal mortality rate. Thus, if the ratio is lower, worse education increases the maternal mortality rate. In addition, if the ratio between median household income and the maternal mortality rate is higher, that indicates that a higher median household income lowers the maternal mortality rate. Thus, if the ratio is lower, lower median household income increases the maternal mortality rate. This ratio was not calculated for tobacco use because it would not indicate whether there is a positive or negative association. 
+
+Arranging the maternal mortality rate in ascending order shows that California, Nevada, and Massachusetts have the lowest maternal mortality rates, while Indiana, Georgia, and Louisiana have the highest maternal mortality rates in the country. Massachusetts, Maryland, and Vermont are ranked the best in education, while Mississippi, West Virginia, and Louisiana are ranked the worst in education. Maryland, New Jersey, and Hawaii have the highest median household incomes, while Mississippi, West Virginia, and Arkansas have the lowest median household incomes. Finally, the states with the lowest number of tobacco users are Utah, California, and Washington, while the states with the highest number of tobacco users are West Virgina, Kentucky, and Arkansas.
+
+The mean maternal mortality rate was calculated based on which political party controlled the state legislatures. The data shows that Democrat controlled state legislatures have lower maternal mortality rates on average while Republican controlled legislatures have much higher maternal mortality rates on average.
+
+
+```{R}
+#The CDC released data claiming that the national Maternal mortality rate as of 2019 was 20.2.
+all_data %>% summarize(mean(educationScore)) %>% kable()
+all_data %>% filter(maternalMortalityRate > 20.2) %>% summarize(mean(educationScore)) %>% kable()
+all_data %>% summarize(mean(tobacco_use)) %>% kable()
+all_data %>% filter(maternalMortalityRate > 20.2) %>% summarize(mean(tobacco_use)) %>% kable()
+
+all_data %>% filter(`liberal%` < `moderate%`) %>% summarise(mean(maternalMortalityRate, na.rm = T)) %>% kable()
+all_data %>% filter(`liberal%` > `moderate%`) %>% summarise(mean(maternalMortalityRate, na.rm = T)) %>% kable()
+all_data %>% filter(`liberal%` < `conservative%`) %>% summarise(mean(maternalMortalityRate, na.rm = T)) %>% kable()
+all_data %>% filter(`liberal%` > `conservative%`) %>% summarise(mean(maternalMortalityRate, na.rm = T)) %>% kable()
+all_data %>% filter(`moderate%` < `conservative%`) %>% summarise(mean(maternalMortalityRate, na.rm = T)) %>% kable()
+all_data %>% filter(`moderate%` > `conservative%`) %>% summarise(mean(maternalMortalityRate, na.rm = T)) %>% kable()
+```
+
+
+The data suggests that states that have maternal mortality rates higher than the national average tend to have education scores lower than the national average. In fact, the average education score for states that have maternal mortality rates greater than 20.2 have education score nearly 10 points lower than the national average. Furthermore, states with a maternal mortality rate higher than the national average tend to have more tobacco users. States with maternal mortality rates higher than the national average tend to have about 1.3% more of the population as tobacco users. 
+
+Data analysis on the political ideologies of each state indicates that liberal states tend to have the lowest maternal mortality rates on average. Moderate states have rates higher than liberal states. Conservative states tend to have maternal mortality rates higher than moderate and liberal states.
+
+
+```{R}
+all_data %>% group_by(state_governments) %>% count() %>% kable()
+all_data %>% select(2:5) %>% summarise_all(mean, na.rm = T) %>% kable()
+all_data %>% select(2:5) %>% summarise_all(max, na.rm = T) %>% kable()
+all_data %>% select(2:5) %>% summarise_all(min, na.rm = T) %>% kable()
+all_data %>% select(2:5) %>% summarise_all(sd, na.rm = T) %>% kable()
+all_data %>% select(10:11) %>% summarise_all(mean, na.rm = T) %>% kable()
+all_data %>% select(10:11) %>% summarise_all(max, na.rm = T) %>% kable()
+all_data %>% select(10:11) %>% summarise_all(min, na.rm = T) %>% kable()
+all_data %>% select(10:11) %>% summarise_all(sd, na.rm = T) %>% kable()
+all_data %>% summarize_all(function(x)sum(is.na(x))) %>% kable()
+```
+
+
+The data shows that there are 15 Democrat controlled state legislatures, 23 Republican controlled state legislatures, and 12 state legislatures that are divided between the 2 parties. 
+
+The mean maternal mortality rate is 21.97. The state with the highest maternal mortality rate of 58.1 is Louisiana and the state with the lowest maternal mortality rate is California. The standard deviation is 10.75.
+
+The mean for median household income is $62,631.42. The state with the highest median household income is Maryland and the state with the lowest median household income is 
+
+The average tobacco use is each state is 16.65% of the state population. The state with the most percentage of tobacco users is West Virginia.
+
+The average education score is 49.26. The state with the highest education score is Massachusetts.
+
+The maternal mortality rate had 3 NAs and the ratios had 3 NAs each.
 
 
 #### Visualizing
 
 ```{R}
-# your plot 1
+all_data %>% ggplot(aes(educationScore, maternalMortalityRate)) + geom_point() + geom_smooth(method = 'lm', color = "#dea5a4") + ylab("Maternal Mortality Rate") + xlab("Education Score") + theme_bw()
 ```
 
-Your discussion of plot 1
+There is a negative correlation between the education score and the maternal mortality rate. Thus, this shows that as education increases, the maternal mortality rate decreases.
 
 ```{R}
-# your plot 2
+all_data %>% ggplot(aes(state_governments, maternalMortalityRate, fill = state_governments)) + geom_bar(stat = 'summary', fun = mean, show.legend = F) + scale_fill_manual(values = c("Democrat" = "#A7C7E7", "Republican" = "#FAA0A0", "Divided" = "#C3B1E1")) + xlab("State Goverment") + ylab(" Maternal Mortality Rate") + geom_errorbar(stat = 'summary', width=.5) + theme_bw()
 ```
 
-Your discussion of plot 2
+The barplot shows that state legislatures that only have Democrats in control have lower maternal mortality rates on average. States that have a divided state legislature with Republicans as a majority in some parts of the government and Republicans in control in other parts of the government have higher maternal mortality rates on average when compared to Democratic state, but lower than Republican states. Finally, Republican states have the highest maternal mortality rates on average.
 
 ```{R}
-# your plot 3
+all_data %>% ggplot(aes(x = HouseholdIncome, y = maternalMortalityRate)) + geom_density2d_filled() + geom_jitter(size = 0.5) + xlab("Median Household Income (USD)") + ylab(" Maternal Mortality Rate") + theme_bw()
 ```
 
-Your discussion of plot 3
+The density plot shows that most states have a median household income around $60,000. The higher maternal mortality rates are also shown with states that have median household incomes of $60,000 or less. States that have higher median household incomes tend to have lower maternal mortality rates. 
 
 #### Concluding Remarks
 
-If any!
+The United States on average has a very high maternal mortality rate when compared to other developed countries. The data shows that as education increases, the maternal mortality rate decreases. Increasing education quality can help decrease the country's maternal mortality rate. In addition, there appears to be a negative correlation between median household income and the maternal mortality rate. As the median household income increases, the maternal mortality rate decreases. Thus, programs that help increase the wealth of individuals can help decrease the maternal mortality rate. Tobacco also seems to have an effect on the maternal mortality rate. As tobacco use increases, the maternal mortality rate increases. Decreasing tobacco use can decrease the probability of complications that lead to mortality during or after pregnancy. Finally, there also appears to be a political relationship. Democratic state legistatures tend to have the lowest maternal mortality rates on average, while Republican state legistures have the higher maternal mortality rates on average. 
+
+There are various factors that influence the maternal mortality rate. The data shows that education, median household income, tobacco use, and party control of state legislatures have an impact on the maternal mortality rate. Finding solutions to address each of these issues is key to decreasing this rate.
 
 
 
